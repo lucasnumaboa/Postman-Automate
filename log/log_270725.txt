@@ -1,0 +1,7 @@
+=== Log iniciado em 27/07/2025 10:04:53 ===
+[27/07/2025 10:04:53] Tentando carregar ícone de: C:\Users\PC2\Desktop\postman automate\icon.png
+[27/07/2025 10:04:53] Ícone carregado com sucesso
+[27/07/2025 10:04:53] Imagem do ícone criada, configurando ícone da bandeja
+[27/07/2025 10:04:53] Aplicativo minimizado para a bandeja do sistema
+[27/07/2025 10:04:53] Aplicativo minimizado para a bandeja do sistema. Clique no ícone para restaurar.
+[27/07/2025 10:05:43] Fechando o aplicativo a partir da bandeja do sistema

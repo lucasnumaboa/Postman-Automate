@@ -1,0 +1,7 @@
+ttkbootstrap
+requests
+watchdog
+pystray
+pillow
+pyinstaller
+pywin32

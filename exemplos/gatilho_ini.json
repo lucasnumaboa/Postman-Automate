@@ -1,0 +1,6 @@
+{
+    "tipo": "inicio",
+    "timestamp": "2023-01-01T00:00:00",
+    "mensagem": "Iniciando processamento de lote",
+    "lote_id": "LOTE001"
+}

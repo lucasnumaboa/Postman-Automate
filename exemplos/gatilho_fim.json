@@ -1,0 +1,8 @@
+{
+    "tipo": "fim",
+    "timestamp": "2023-01-01T00:00:00",
+    "mensagem": "Finalizando processamento de lote",
+    "lote_id": "LOTE001",
+    "total_processado": 10,
+    "status": "concluido"
+}

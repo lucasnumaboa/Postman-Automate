@@ -1,0 +1,25 @@
+{
+    "id": "REQ001",
+    "data": "2023-01-01",
+    "cliente": {
+        "nome": "Empresa Exemplo",
+        "codigo": "EMP001",
+        "documento": "12345678901234"
+    },
+    "itens": [
+        {
+            "codigo": "PROD001",
+            "descricao": "Produto de Exemplo 1",
+            "quantidade": 5,
+            "valor_unitario": 10.50
+        },
+        {
+            "codigo": "PROD002",
+            "descricao": "Produto de Exemplo 2",
+            "quantidade": 2,
+            "valor_unitario": 25.75
+        }
+    ],
+    "valor_total": 104.00,
+    "observacoes": "Esta é uma requisição de exemplo para demonstrar o formato esperado pelo sistema."
+}
