@@ -67,6 +67,13 @@ class PostmanAutomatizado(ttk.Window):
         self.observer = None
         self.monitoramento_ativo = False
         self.caminho_atual_index = 0  # Índice do caminho atual sendo processado
+        self.atualizacao_tempos_ativa = False  # Controle para atualização de tempos
+        
+            # Dicionário para rastrear processamentos em andamento por caminho
+        self._processamentos_ativos = {}
+        
+        # Dicionário para rastrear arquivos em processamento
+        self._arquivos_em_processamento = {}
         
         # Criar interface
         self.criar_interface()
@@ -90,13 +97,18 @@ class PostmanAutomatizado(ttk.Window):
         self.aba_caminhos = ttk.Frame(self.notebook)
         self.notebook.add(self.aba_caminhos, text="📁 Cadastro de Caminhos")
         
-        # Aba 3: Logs
+        # Aba 3: Fila
+        self.aba_fila = ttk.Frame(self.notebook)
+        self.notebook.add(self.aba_fila, text="⏱️ Fila")
+        
+        # Aba 4: Logs
         self.aba_logs = ttk.Frame(self.notebook)
         self.notebook.add(self.aba_logs, text="📋 Logs")
         
         # Configurar conteúdo das abas
         self.configurar_aba_config()
         self.configurar_aba_caminhos()
+        self.configurar_aba_fila()
         self.configurar_aba_logs()
         
     def configurar_aba_config(self):
@@ -255,6 +267,215 @@ class PostmanAutomatizado(ttk.Window):
         
         ttk.Button(btn_frame, text="Executar Agora", command=self.executar_agora, style="info.TButton").pack(side=RIGHT, padx=5)
         
+    def configurar_aba_fila(self):
+        # Frame principal com padding
+        frame = ttk.Frame(self.aba_fila, padding=10)
+        frame.pack(fill=BOTH, expand=True)
+        
+        # Título
+        ttk.Label(frame, text="Fila de Processamento", font=("TkDefaultFont", 14, "bold")).pack(pady=(0, 10))
+        
+        # Criar frame para a tabela de arquivos
+        tabela_frame = ttk.Frame(frame)
+        tabela_frame.pack(fill=BOTH, expand=True, pady=10)
+        
+        # Criar cabeçalho
+        header_frame = ttk.Frame(tabela_frame)
+        header_frame.pack(fill=X, pady=(0, 5))
+        
+        ttk.Label(header_frame, text="Nome do Arquivo", width=40).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Caminho", width=20).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Hora de Envio", width=20).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Tempo Decorrido", width=10).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Timeout (s)", width=10).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Tentativa", width=8).pack(side=LEFT, padx=5)
+        ttk.Label(header_frame, text="Status", width=15).pack(side=LEFT, padx=5)
+        
+        # Adicionar separador
+        ttk.Separator(tabela_frame, orient="horizontal").pack(fill=X, pady=5)
+        
+        # Criar área scrollable para a lista de arquivos
+        self.fila_container = ttk.Frame(tabela_frame)
+        self.fila_container.pack(fill=BOTH, expand=True)
+        
+        # Criar canvas e scrollbar
+        self.fila_canvas = tk.Canvas(self.fila_container)
+        scrollbar = ttk.Scrollbar(self.fila_container, orient="vertical", command=self.fila_canvas.yview)
+        self.fila_scrollable_frame = ttk.Frame(self.fila_canvas)
+        
+        self.fila_scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.fila_canvas.configure(scrollregion=self.fila_canvas.bbox("all"))
+        )
+        
+        self.fila_canvas.create_window((0, 0), window=self.fila_scrollable_frame, anchor="nw")
+        self.fila_canvas.configure(yscrollcommand=scrollbar.set)
+        
+        self.fila_canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Botões
+        btn_frame = ttk.Frame(frame)
+        btn_frame.pack(fill=X, pady=10)
+        
+        # Botão para atualizar a fila
+        ttk.Button(btn_frame, text="Atualizar Fila", command=self.atualizar_fila, style="info.TButton").pack(side=LEFT, padx=5)
+        
+        # Inicializar a fila vazia
+        self.atualizar_fila()
+        
+    def adicionar_arquivo_fila(self, arquivo_nome, nome_caminho, tempo_inicio, timeout, tentativa=1):
+        """Adiciona um arquivo à fila de processamento
+        
+        Args:
+            arquivo_nome: Nome do arquivo
+            nome_caminho: Nome do caminho de processamento
+            tempo_inicio: Timestamp de início do processamento
+            timeout: Tempo máximo de processamento em segundos
+            tentativa: Número da tentativa de processamento (padrão: 1)
+        """
+        # Criar chave única para o arquivo
+        chave = f"{nome_caminho}_{arquivo_nome}"
+        
+        # Adicionar ao dicionário de arquivos em processamento
+        self._arquivos_em_processamento[chave] = {
+            "arquivo": arquivo_nome,
+            "caminho": nome_caminho,
+            "inicio": tempo_inicio,
+            "timeout": timeout,
+            "status": "Processando",
+            "tentativa": tentativa
+        }
+        
+        # Atualizar a interface da fila (recria a interface quando um novo arquivo é adicionado)
+        self.after(100, self.atualizar_fila)
+        
+        # Garantir que a atualização dos tempos esteja ativa
+        if not self.atualizacao_tempos_ativa:
+            self.atualizacao_tempos_ativa = True
+            self.after(1000, self.atualizar_tempos_fila)
+    
+    def remover_arquivo_fila(self, arquivo_nome, nome_caminho):
+        """Remove um arquivo da fila de processamento
+        
+        Args:
+            arquivo_nome: Nome do arquivo
+            nome_caminho: Nome do caminho de processamento
+        """
+        # Criar chave única para o arquivo
+        chave = f"{nome_caminho}_{arquivo_nome}"
+        
+        # Remover do dicionário de arquivos em processamento
+        if chave in self._arquivos_em_processamento:
+            del self._arquivos_em_processamento[chave]
+            
+            # Atualizar a interface da fila (recria a interface quando um arquivo é removido)
+            self.after(100, self.atualizar_fila)
+    
+    def atualizar_fila(self):
+        """Atualiza a interface da fila de processamento"""
+        # Limpar o frame da fila
+        for widget in self.fila_scrollable_frame.winfo_children():
+            widget.destroy()
+        
+        # Se não houver arquivos em processamento, mostrar mensagem
+        if not self._arquivos_em_processamento:
+            ttk.Label(self.fila_scrollable_frame, text="Nenhum arquivo em processamento.").pack(pady=10)
+            return
+        
+        # Tempo atual para calcular o tempo decorrido
+        tempo_atual = time.time()
+        
+        # Adicionar cada arquivo em processamento à interface
+        for chave, info in self._arquivos_em_processamento.items():
+            # Criar frame para a linha
+            linha_frame = ttk.Frame(self.fila_scrollable_frame)
+            linha_frame.pack(fill=X, pady=2)
+            
+            # Calcular tempo decorrido
+            tempo_decorrido = tempo_atual - info["inicio"]
+            
+            # Formatar tempo decorrido
+            minutos, segundos = divmod(int(tempo_decorrido), 60)
+            horas, minutos = divmod(minutos, 60)
+            tempo_formatado = f"{horas:02d}:{minutos:02d}:{segundos:02d}"
+            
+            # Atualizar status se o timeout foi excedido
+            if tempo_decorrido > info["timeout"]:
+                info["status"] = "Timeout"
+            
+            # Formatar hora de envio
+            hora_envio = datetime.datetime.fromtimestamp(info["inicio"]).strftime("%d/%m/%Y %H:%M:%S")
+            
+            # Adicionar informações à linha
+            ttk.Label(linha_frame, text=info["arquivo"], width=40).pack(side=LEFT, padx=5)
+            ttk.Label(linha_frame, text=info["caminho"], width=20).pack(side=LEFT, padx=5)
+            ttk.Label(linha_frame, text=hora_envio, width=20).pack(side=LEFT, padx=5)
+            ttk.Label(linha_frame, text=tempo_formatado, width=10).pack(side=LEFT, padx=5)
+            ttk.Label(linha_frame, text=str(info["timeout"]), width=10).pack(side=LEFT, padx=5)
+            ttk.Label(linha_frame, text=str(info.get("tentativa", 1)), width=8).pack(side=LEFT, padx=5)
+            
+            # Definir cor do status
+            status_label = ttk.Label(linha_frame, text=info["status"], width=15)
+            status_label.pack(side=LEFT, padx=5)
+            
+            # Aplicar estilo baseado no status
+            if info["status"] == "Processando":
+                status_label.configure(foreground="blue")
+            elif info["status"] == "Timeout":
+                status_label.configure(foreground="red")
+        
+        # Agendar próxima atualização em 1 segundo, mas apenas atualizar os valores de tempo
+        # sem recriar toda a interface para evitar o efeito de piscar
+        if not self.atualizacao_tempos_ativa:
+            self.atualizacao_tempos_ativa = True
+            self.after(1000, self.atualizar_tempos_fila)
+    
+    def atualizar_tempos_fila(self):
+        """Atualiza apenas os tempos decorridos na fila sem recriar toda a interface"""
+        if not self._arquivos_em_processamento:
+            # Desativa a atualização quando não há mais arquivos
+            self.atualizacao_tempos_ativa = False
+            return
+            
+        # Tempo atual para calcular o tempo decorrido
+        tempo_atual = time.time()
+        
+        # Percorrer todos os widgets da fila para atualizar apenas os tempos
+        for linha_frame in self.fila_scrollable_frame.winfo_children():
+            if isinstance(linha_frame, ttk.Frame):
+                # Obter o nome do arquivo e caminho a partir dos labels na linha
+                widgets = [w for w in linha_frame.winfo_children() if isinstance(w, ttk.Label)]
+                if len(widgets) >= 7:  # Agora temos 7 widgets (incluindo o de tentativa)
+                    arquivo_label = widgets[0]
+                    caminho_label = widgets[1]
+                    tempo_label = widgets[3]  # Label do tempo decorrido
+                    status_label = widgets[6]  # Label do status (agora é o índice 6 devido à coluna de tentativa)
+                    
+                    # Criar chave para buscar no dicionário
+                    chave = f"{caminho_label['text']}_{arquivo_label['text']}"
+                    
+                    if chave in self._arquivos_em_processamento:
+                        info = self._arquivos_em_processamento[chave]
+                        
+                        # Calcular e atualizar tempo decorrido
+                        tempo_decorrido = tempo_atual - info["inicio"]
+                        minutos, segundos = divmod(int(tempo_decorrido), 60)
+                        horas, minutos = divmod(minutos, 60)
+                        tempo_formatado = f"{horas:02d}:{minutos:02d}:{segundos:02d}"
+                        tempo_label.configure(text=tempo_formatado)
+                        
+                        # Atualizar status se o timeout foi excedido
+                        if tempo_decorrido > info["timeout"] and info["status"] != "Timeout":
+                            info["status"] = "Timeout"
+                            status_label.configure(text="Timeout", foreground="red")
+        
+        # Agendar próxima atualização se ainda houver arquivos
+        if self._arquivos_em_processamento:
+            self.after(1000, self.atualizar_tempos_fila)
+        else:
+            self.atualizacao_tempos_ativa = False
+    
     def configurar_aba_logs(self):
         # Frame principal com padding
         frame = ttk.Frame(self.aba_logs, padding=10)
@@ -656,9 +877,6 @@ class PostmanAutomatizado(ttk.Window):
     # Dicionário para rastrear logs já registrados (evitar duplicações)
     _logs_registrados = {}
     
-    # Dicionário para rastrear processamentos em andamento por caminho
-    _processamentos_ativos = {}
-    
     def adicionar_log(self, mensagem, log_id=None):
         timestamp = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         log_entry = f"[{timestamp}] {mensagem}\n"
@@ -1043,17 +1261,23 @@ class PostmanAutomatizado(ttk.Window):
         if caminho["gatilho_ativo"]:
             if not os.path.isfile(gatilho_ini_path):
                 self.adicionar_log(f"ERRO: Arquivo gatilho_ini.json não encontrado no caminho {nome_caminho}!", log_id=processo_id+"_erro_ini")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
                 return
             
             if not os.path.isfile(gatilho_fim_path):
                 self.adicionar_log(f"ERRO: Arquivo gatilho_fim.json não encontrado no caminho {nome_caminho}!", log_id=processo_id+"_erro_fim")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
                 return
             
-            # Enviar gatilho_ini.json
-            status_ini = self.enviar_requisicao(gatilho_ini_path)
+            # Enviar gatilho_ini.json com sistema de retry
+            status_ini, sucesso_ini = self.enviar_requisicao(gatilho_ini_path, max_tentativas=3)
             
-            if status_ini != 200:
-                self.adicionar_log(f"ERRO: Falha ao enviar gatilho_ini.json do caminho {nome_caminho}. Status: {status_ini}", log_id=processo_id+"_erro_ini_status")
+            if not sucesso_ini:
+                self.adicionar_log(f"ERRO: Falha ao enviar gatilho_ini.json do caminho {nome_caminho} após 3 tentativas. Status: {status_ini}", log_id=processo_id+"_erro_ini_status")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
                 return
             
             # Mover gatilho_ini.json para a pasta de saída
@@ -1072,6 +1296,9 @@ class PostmanAutomatizado(ttk.Window):
                 self.adicionar_log(f"Arquivo gatilho_ini.json do caminho {nome_caminho} processado e movido para {nome_saida_ini}", log_id=processo_id+"_ini_movido")
             except Exception as e:
                 self.adicionar_log(f"ERRO ao mover arquivo gatilho_ini.json do caminho {nome_caminho}: {str(e)}", log_id=processo_id+"_erro_ini_mover")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
+                return
             
             self.adicionar_log(f"Gatilho inicial do caminho {nome_caminho} enviado com sucesso!", log_id=processo_id+"_ini_sucesso")
         
@@ -1090,40 +1317,70 @@ class PostmanAutomatizado(ttk.Window):
             try:
                 # Determinar o número de requisições simultâneas
                 num_simultaneas = 1  # Padrão: uma por vez
-                if self.config["fila"].isdigit():
-                    num_simultaneas = int(self.config["fila"])
+                # Verificar se a configuração de fila é um número para requisições simultâneas
+                # ou um nome de fila para a URL
+                fila_config = self.config.get("fila", "")
+                if fila_config and fila_config.isdigit():
+                    num_simultaneas = int(fila_config)
                     if num_simultaneas < 1:
                         num_simultaneas = 1
                 
                 self.adicionar_log(f"Processando em lote com {num_simultaneas} requisições simultâneas no caminho {nome_caminho}", log_id=processo_id+"_lote_inicio")
                 
-                # Processar arquivos em lotes
-                for i in range(0, len(arquivos), num_simultaneas):
-                    # Registrar o tempo de início do processamento do lote
-                    tempo_inicio_lote = time.time()
-                    
-                    lote_atual = arquivos[i:i+num_simultaneas]
-                    threads = []
-                    
-                    # Criar threads para cada arquivo no lote
-                    for arquivo in lote_atual:
-                        arquivo_path = os.path.join(caminho["input"], arquivo)
+                # Processar arquivos mantendo sempre o número máximo de arquivos em processamento
+                # Inicializar variáveis para controle da fila
+                arquivos_restantes = arquivos.copy()
+                threads_ativas = []
+                threads_concluidas = []
+                lock = threading.Lock()
+                
+                # Função para processar um arquivo e iniciar o próximo quando concluir
+                def processar_e_continuar(arquivo):
+                    arquivo_path = os.path.join(caminho["input"], arquivo)
+                    try:
+                        self.processar_arquivo_individual(arquivo_path, arquivo, caminho, False)  # Não enviar gatilho_fim
+                    finally:
+                        # Quando terminar, remover esta thread da lista de ativas e adicionar à lista de concluídas
+                        with lock:
+                            if arquivo in threads_ativas:
+                                threads_ativas.remove(arquivo)
+                                threads_concluidas.append(arquivo)
+                            
+                            # Se ainda houver arquivos para processar, iniciar o próximo
+                            if arquivos_restantes:
+                                proximo_arquivo = arquivos_restantes.pop(0)
+                                threads_ativas.append(proximo_arquivo)
+                                thread = threading.Thread(
+                                    target=processar_e_continuar,
+                                    args=(proximo_arquivo,)
+                                )
+                                thread.daemon = True
+                                thread.start()
+                
+                # Iniciar o processamento com o número máximo de threads simultâneas
+                tempo_inicio_lote = time.time()
+                
+                # Iniciar as primeiras threads (até o limite de simultaneidade)
+                for i in range(min(num_simultaneas, len(arquivos))):
+                    if arquivos_restantes:
+                        arquivo = arquivos_restantes.pop(0)
+                        threads_ativas.append(arquivo)
                         thread = threading.Thread(
-                            target=self.processar_arquivo_individual,
-                            args=(arquivo_path, arquivo, caminho, False)  # Não enviar gatilho_fim
+                            target=processar_e_continuar,
+                            args=(arquivo,)
                         )
-                        threads.append(thread)
+                        thread.daemon = True
                         thread.start()
-                    
-                    # Aguardar todas as threads do lote terminarem
-                    for thread in threads:
-                        thread.join()
-                    
-                    # Calcular o tempo total de processamento do lote
-                    tempo_fim_lote = time.time()
-                    tempo_total_lote = round(tempo_fim_lote - tempo_inicio_lote, 2)  # Tempo em segundos com 2 casas decimais
-                    
-                    self.adicionar_log(f"Lote de {len(lote_atual)} arquivos processado no caminho {nome_caminho} em {tempo_total_lote}s", log_id=processo_id+f"_lote_{i}")
+                
+                # Aguardar até que todos os arquivos sejam processados
+                while len(threads_concluidas) < len(arquivos):
+                    time.sleep(0.5)  # Verificar a cada meio segundo
+                
+                # Calcular o tempo total de processamento
+                tempo_fim_lote = time.time()
+                tempo_total_lote = round(tempo_fim_lote - tempo_inicio_lote, 2)  # Tempo em segundos com 2 casas decimais
+                
+                self.adicionar_log(f"Total de {len(arquivos)} arquivos processados no caminho {nome_caminho} em {tempo_total_lote}s", log_id=processo_id+"_lote_total")
             except Exception as e:
                 self.adicionar_log(f"ERRO no processamento em lote do caminho {nome_caminho}: {str(e)}", log_id=processo_id+"_erro_lote")
         else:
@@ -1141,8 +1398,15 @@ class PostmanAutomatizado(ttk.Window):
         if not arquivos_restantes and caminho["gatilho_ativo"] and os.path.isfile(gatilho_fim_path):
             self.adicionar_log(f"Todos os arquivos processados. Enviando gatilho_fim para o caminho {nome_caminho}...", log_id=processo_id+"_fim_inicio")
             
-            # Enviar gatilho_fim.json
-            status_fim = self.enviar_requisicao(gatilho_fim_path, log_id=processo_id+"_gatilho_fim")
+            # Enviar gatilho_fim.json com sistema de retry
+            status_fim, sucesso_fim = self.enviar_requisicao(gatilho_fim_path, log_id=processo_id+"_gatilho_fim", max_tentativas=3)
+            
+            # Se falhar após todas as tentativas, não mover o arquivo
+            if not sucesso_fim:
+                self.adicionar_log(f"ERRO: Falha ao enviar gatilho_fim.json do caminho {nome_caminho} após 3 tentativas. Status: {status_fim}", log_id=processo_id+"_erro_fim_status")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
+                return
             
             # Mover gatilho_fim.json para a pasta de saída
             timestamp = datetime.datetime.now().strftime("%d%m%y_%H%M%S")
@@ -1160,6 +1424,9 @@ class PostmanAutomatizado(ttk.Window):
                 self.adicionar_log(f"Arquivo gatilho_fim.json do caminho {nome_caminho} processado e movido para {nome_saida_fim}", log_id=processo_id+"_fim_movido")
             except Exception as e:
                 self.adicionar_log(f"ERRO ao mover arquivo gatilho_fim.json do caminho {nome_caminho}: {str(e)}", log_id=processo_id+"_erro_fim_mover")
+                # Marcar este caminho como não mais em processamento antes de retornar
+                self._processamentos_ativos[nome_caminho] = False
+                return
             
             if status_fim != 200:
                 self.adicionar_log(f"ERRO: Falha ao enviar gatilho_fim.json do caminho {nome_caminho}. Status: {status_fim}", log_id=processo_id+"_erro_fim_status")
@@ -1175,14 +1442,15 @@ class PostmanAutomatizado(ttk.Window):
         # Marcar este caminho como não mais em processamento
         self._processamentos_ativos[nome_caminho] = False
     
-    def processar_arquivo_individual(self, arquivo_path, arquivo_nome, caminho=None, enviar_gatilho_fim=True):
-        """Processa um arquivo individual, enviando requisição e movendo para saída
+    def processar_arquivo_individual(self, arquivo_path, arquivo_nome, caminho=None, enviar_gatilho_fim=True, tentativa=1):
+        """Processa um arquivo individual, enviando requisição e movendo para saída apenas se a requisição for bem-sucedida
         
         Args:
             arquivo_path: Caminho completo do arquivo a ser processado
             arquivo_nome: Nome do arquivo (sem o caminho)
             caminho: Dicionário com as configurações do caminho (input, output, etc.)
             enviar_gatilho_fim: Se True, envia o gatilho_fim após processar o arquivo (padrão: True)
+            tentativa: Número da tentativa de processamento (padrão: 1)
         """
         # Registrar o tempo de início do processamento individual
         tempo_inicio_individual = time.time()
@@ -1195,26 +1463,38 @@ class PostmanAutomatizado(ttk.Window):
         # Criar um ID único para este arquivo
         arquivo_id = f"arq_{nome_caminho}_{arquivo_nome}_{tempo_inicio_individual}"
         
-        # Enviar requisição
-        status = self.enviar_requisicao(arquivo_path, log_id=arquivo_id)
+        # Adicionar arquivo à fila de processamento
+        timeout = self.config.get("timeout", 30)  # Timeout padrão: 30 segundos
+        self.adicionar_arquivo_fila(arquivo_nome, nome_caminho, tempo_inicio_individual, timeout, tentativa)
         
-        # Gerar nome do arquivo de saída
-        timestamp = datetime.datetime.now().strftime("%d%m%y_%H%M%S")
-        nome_saida = f"{os.path.splitext(arquivo_nome)[0]}_{timestamp}.json"
-        arquivo_saida = os.path.join(caminho["output"], nome_saida)
+        # Enviar requisição com sistema de retry (3 tentativas)
+        status, sucesso = self.enviar_requisicao(arquivo_path, log_id=arquivo_id, max_tentativas=3, tentativa_atual=tentativa, nome_caminho=nome_caminho, arquivo_nome=arquivo_nome)
         
-        # Mover arquivo para a pasta de saída
-        try:
-            with open(arquivo_path, "r") as f_in:
-                conteudo = f_in.read()
+        # Só move o arquivo para a pasta de saída se a requisição foi bem-sucedida
+        if sucesso:
+            # Gerar nome do arquivo de saída
+            timestamp = datetime.datetime.now().strftime("%d%m%y_%H%M%S")
+            nome_saida = f"{os.path.splitext(arquivo_nome)[0]}_{timestamp}.json"
+            arquivo_saida = os.path.join(caminho["output"], nome_saida)
             
-            with open(arquivo_saida, "w") as f_out:
-                f_out.write(conteudo)
+            # Remover arquivo da fila de processamento
+            self.remover_arquivo_fila(arquivo_nome, nome_caminho)
             
-            os.remove(arquivo_path)
-            self.adicionar_log(f"Arquivo {arquivo_nome} do caminho {nome_caminho} processado e movido para {nome_saida}", log_id=arquivo_id+"_movido")
-        except Exception as e:
-            self.adicionar_log(f"ERRO ao mover arquivo {arquivo_nome} do caminho {nome_caminho}: {str(e)}", log_id=arquivo_id+"_erro_mover")
+            # Mover arquivo para a pasta de saída
+            try:
+                with open(arquivo_path, "r") as f_in:
+                    conteudo = f_in.read()
+                
+                with open(arquivo_saida, "w") as f_out:
+                    f_out.write(conteudo)
+                
+                os.remove(arquivo_path)
+                self.adicionar_log(f"Arquivo {arquivo_nome} do caminho {nome_caminho} processado e movido para {nome_saida}", log_id=arquivo_id+"_movido")
+            except Exception as e:
+                self.adicionar_log(f"ERRO ao mover arquivo {arquivo_nome} do caminho {nome_caminho}: {str(e)}", log_id=arquivo_id+"_erro_mover")
+        else:
+            # Se a requisição falhou após todas as tentativas, não move o arquivo
+            self.adicionar_log(f"Arquivo {arquivo_nome} do caminho {nome_caminho} NÃO foi movido devido a falha na requisição após 3 tentativas", log_id=arquivo_id+"_nao_movido")
         
         # Se o gatilho estiver ativo e enviar_gatilho_fim for True, enviar gatilho_fim.json
         # Essa lógica foi movida para o método processar_arquivos para ser executada apenas uma vez
@@ -1228,7 +1508,12 @@ class PostmanAutomatizado(ttk.Window):
                 
                 # Só enviar o gatilho_fim se não houver mais arquivos na pasta
                 if not arquivos_restantes:
-                    status_fim = self.enviar_requisicao(gatilho_fim_path, log_id=arquivo_id+"_gatilho_fim")
+                    status_fim, sucesso_fim = self.enviar_requisicao(gatilho_fim_path, log_id=arquivo_id+"_gatilho_fim", max_tentativas=3)
+                    
+                    # Se falhar após todas as tentativas, não mover o arquivo
+                    if not sucesso_fim:
+                        self.adicionar_log(f"ERRO: Falha ao enviar gatilho_fim.json após 3 tentativas. Status: {status_fim}", log_id=arquivo_id+"_erro_fim_status")
+                        return
                     
                     # Mover gatilho_fim.json para a pasta de saída
                     timestamp = datetime.datetime.now().strftime("%d%m%y_%H%M%S")
@@ -1261,61 +1546,108 @@ class PostmanAutomatizado(ttk.Window):
         
         # Remover a mensagem de conclusão, pois ela já é exibida no método processar_arquivos
     
-    def enviar_requisicao(self, arquivo_path, log_id=None):
+    def enviar_requisicao(self, arquivo_path, log_id=None, max_tentativas=3, tentativa_atual=1, nome_caminho=None, arquivo_nome=None):
+        # Ler o conteúdo do arquivo JSON
         try:
-            # Ler o conteúdo do arquivo JSON
             with open(arquivo_path, "r") as f:
                 dados = json.load(f)
-            
-            # Preparar headers
-            headers = {}
-            
-            # Adicionar token se disponível
-            if self.config["token"]:
-                headers["Authorization"] = f"Bearer {self.config['token']}"
-            
-            # Configurar autenticação básica se disponível
-            auth = None
-            if self.config["username"] and self.config["password"]:
-                auth = (self.config["username"], self.config["password"])
-            
-            # Configurar timeout
-            timeout = self.config["timeout"]
-            
-            # Construir URL completa
-            url = self.config["url_base"]
-            if self.config["fila"]:
-                url = f"{url}/{self.config['fila']}"
-            
-            # Enviar requisição POST - Usar um identificador único para o log
-            arquivo_nome = os.path.basename(arquivo_path)
-            if log_id is None:
-                log_id = f"{arquivo_nome}_{time.time()}"
-            self.adicionar_log(f"Enviando requisição para `{url}` com arquivo {arquivo_nome}", log_id=log_id)
-            
-            # Medir o tempo de execução da requisição
-            inicio = time.time()
-            response = requests.post(
-                url=url,
-                json=dados,
-                headers=headers,
-                auth=auth,
-                timeout=timeout
-            )
-            fim = time.time()
-            tempo_execucao = round(fim - inicio, 2)  # Tempo em segundos com 2 casas decimais
-            
-            # Registrar resposta com o mesmo identificador, incluindo o tempo de execução
-            self.adicionar_log(f"Resposta: Status {response.status_code} - Tempo de execução: {tempo_execucao}s (Timeout configurado: {timeout}s)", log_id=log_id)
-            
-            return response.status_code
-        
-        except requests.exceptions.Timeout as e:
-            self.adicionar_log(f"ERRO de TIMEOUT na requisição: {str(e)} - Timeout configurado: {timeout}s", log_id=log_id+"_erro_timeout")
-            return 408  # Request Timeout
         except Exception as e:
-            self.adicionar_log(f"ERRO na requisição: {str(e)}", log_id=log_id+"_erro")
-            return 500
+            self.adicionar_log(f"ERRO ao ler arquivo JSON: {str(e)}", log_id=log_id+"_erro_leitura")
+            return 500, False  # Retorna código de erro e False indicando falha
+        
+        # Preparar headers
+        headers = {}
+        
+        # Adicionar token se disponível
+        if self.config["token"]:
+            headers["Authorization"] = f"Bearer {self.config['token']}"
+        
+        # Configurar autenticação básica se disponível
+        auth = None
+        if self.config["username"] and self.config["password"]:
+            auth = (self.config["username"], self.config["password"])
+        
+        # Configurar timeout
+        timeout = self.config["timeout"]
+        
+        # Construir URL completa
+        url = self.config["url_base"]
+        # Não adicionar a fila ao final da URL conforme solicitado pelo usuário
+        
+        # Enviar requisição POST - Usar um identificador único para o log
+        arquivo_nome = os.path.basename(arquivo_path)
+        if log_id is None:
+            log_id = f"{arquivo_nome}_{time.time()}"
+        
+        # Sistema de retry - tentar até max_tentativas vezes
+        tentativa = 1
+        while tentativa <= max_tentativas:
+            try:
+                self.adicionar_log(f"Enviando requisição para `{url}` com arquivo {arquivo_nome} (Tentativa {tentativa}/{max_tentativas})", log_id=log_id)
+                
+                # Medir o tempo de execução da requisição
+                inicio = time.time()
+                response = requests.post(
+                    url=url,
+                    json=dados,
+                    headers=headers,
+                    auth=auth,
+                    timeout=timeout
+                )
+                fim = time.time()
+                tempo_execucao = round(fim - inicio, 2)  # Tempo em segundos com 2 casas decimais
+                
+                # Registrar resposta com o mesmo identificador, incluindo o tempo de execução
+                self.adicionar_log(f"Resposta: Status {response.status_code} - Tempo de execução: {tempo_execucao}s (Timeout configurado: {timeout}s)", log_id=log_id)
+                
+                # Se a resposta for bem-sucedida (2xx), retornar o status
+                if 200 <= response.status_code < 300:
+                    return response.status_code, True  # Retorna código de sucesso e True indicando sucesso
+                
+                # Se chegou aqui, a resposta não foi bem-sucedida, mas não houve exceção
+                self.adicionar_log(f"Resposta com erro (status {response.status_code}). Tentativa {tentativa}/{max_tentativas}", log_id=log_id)
+                
+            except requests.exceptions.Timeout as e:
+                self.adicionar_log(f"ERRO de TIMEOUT na requisição: {str(e)} - Timeout configurado: {timeout}s. Tentativa {tentativa}/{max_tentativas}", log_id=log_id+"_erro_timeout")
+                if tentativa == max_tentativas:
+                    # Se temos informações do arquivo e ele está na fila, vamos readicioná-lo com tentativa incrementada
+                    if nome_caminho and arquivo_nome and tentativa_atual < 5:  # Limitamos a 5 tentativas no total
+                        # Remover da fila atual
+                        self.remover_arquivo_fila(arquivo_nome, nome_caminho)
+                        # Adicionar novamente com tentativa incrementada
+                        self.adicionar_log(f"Readicionando arquivo {arquivo_nome} à fila com tentativa {tentativa_atual + 1}", log_id=log_id)
+                        # Vamos processar este arquivo novamente em uma nova thread
+                        caminho_info = {"nome": nome_caminho, "input": os.path.dirname(arquivo_path), "output": os.path.dirname(arquivo_path)}
+                        threading.Thread(target=self.processar_arquivo_individual, 
+                                        args=(arquivo_path, arquivo_nome, caminho_info, False, tentativa_atual + 1)).start()
+                    return 408, False  # Request Timeout e falha após todas as tentativas
+            
+            except Exception as e:
+                self.adicionar_log(f"ERRO na requisição: {str(e)}. Tentativa {tentativa}/{max_tentativas}", log_id=log_id+"_erro")
+                if tentativa == max_tentativas:
+                    # Se temos informações do arquivo e ele está na fila, vamos readicioná-lo com tentativa incrementada
+                    if nome_caminho and arquivo_nome and tentativa_atual < 5:  # Limitamos a 5 tentativas no total
+                        # Remover da fila atual
+                        self.remover_arquivo_fila(arquivo_nome, nome_caminho)
+                        # Adicionar novamente com tentativa incrementada
+                        self.adicionar_log(f"Readicionando arquivo {arquivo_nome} à fila com tentativa {tentativa_atual + 1}", log_id=log_id)
+                        # Vamos processar este arquivo novamente em uma nova thread
+                        caminho_info = {"nome": nome_caminho, "input": os.path.dirname(arquivo_path), "output": os.path.dirname(arquivo_path)}
+                        threading.Thread(target=self.processar_arquivo_individual, 
+                                        args=(arquivo_path, arquivo_nome, caminho_info, False, tentativa_atual + 1)).start()
+                    return 500, False  # Erro interno e falha após todas as tentativas
+            
+            # Incrementar o contador de tentativas
+            tentativa += 1
+            
+            # Se não for a última tentativa, aguardar um pouco antes de tentar novamente
+            if tentativa <= max_tentativas:
+                tempo_espera = tentativa * 2  # Espera progressiva: 2s, 4s, 6s...
+                self.adicionar_log(f"Aguardando {tempo_espera}s antes da próxima tentativa...", log_id=log_id)
+                time.sleep(tempo_espera)
+        
+        # Se chegou aqui, todas as tentativas falharam
+        return 500, False  # Erro interno e falha após todas as tentativas
 
     def create_icon_image(self):
         # Carregar a imagem do ícone a partir do arquivo na raiz do projeto
