@@ -197,14 +197,36 @@ Qualquer arquivo JSON válido pode ser usado como corpo da requisição. Exemplo
 }
 ```
 
-## 📊 Monitorando o Processamento
+## 🔄 Fila de Processamento
+
+A aba de Fila exibe os arquivos que estão aguardando processamento:
+
+- **Lista de Arquivos**: Mostra todos os arquivos na fila para processamento
+- **Status**: Indica se o arquivo está aguardando ou em processamento
+- **Controles**: Permite adicionar ou remover arquivos da fila manualmente
+- **Priorização**: Os arquivos são processados na ordem em que aparecem na fila
+- **Monitoramento em Tempo Real**: A fila é atualizada automaticamente conforme os arquivos são processados
+
+Quando o processamento em lote está ativado, múltiplos arquivos da fila são processados simultaneamente de acordo com o número configurado na "Fila de processamento".
+
+## 📊 Sistema de Logs
 
 A aba de Logs exibe informações detalhadas sobre o processamento:
 
-- Status de cada requisição enviada
-- Erros que possam ocorrer
-- Confirmação de arquivos processados
-- Timestamps de início e fim de processamento
+- **Status de Requisições**: Sucesso ou falha de cada requisição enviada
+- **Códigos HTTP**: Códigos de status retornados pela API (200, 400, 500, etc.)
+- **Tempos de Execução**: Tempo total de processamento de cada arquivo
+- **Taxa de Transferência**: Velocidade de envio dos dados (KB/s)
+- **Tempos de Conexão**: Tempo para estabelecer conexão com o servidor
+- **TTFB (Time To First Byte)**: Tempo até o recebimento do primeiro byte de resposta
+- **Erros Detalhados**: Mensagens específicas de erros que possam ocorrer
+- **Movimentação de Arquivos**: Confirmação de arquivos processados e movidos
+- **Timestamps**: Registros de data e hora de início e fim de processamento
+- **Tentativas de Reenvio**: Informações sobre retentativas em caso de falhas
+- **Erros de Leitura/Escrita**: Problemas na leitura dos arquivos JSON ou escrita de logs
+- **Informações de Autenticação**: Sucesso ou falha na autenticação (sem expor credenciais)
+
+Os logs são salvos diariamente em arquivos separados na pasta "logs" para referência futura e análise de problemas.
 
 ## 💡 Dicas e Solução de Problemas
 
