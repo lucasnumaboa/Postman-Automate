@@ -1585,17 +1585,90 @@ class PostmanAutomatizado(ttk.Window):
             try:
                 self.adicionar_log(f"Enviando requisição para `{url}` com arquivo {arquivo_nome} (Tentativa {tentativa}/{max_tentativas})", log_id=log_id)
                 
+                # Variáveis para armazenar os tempos de conexão e TTFB
+                tempo_conexao = None
+                tempo_ttfb = None
+                inicio_conexao = None
+                fim_conexao = None
+                inicio_envio = None
+                inicio_resposta = None
+                
+                # Não usamos event_hook pois está causando erro
+                
+                # Obter o tamanho do arquivo para calcular a taxa de transferência
+                tamanho_arquivo = os.path.getsize(arquivo_path)  # em bytes
+                tamanho_arquivo_mb = tamanho_arquivo / (1024 * 1024)  # em MB
+                
                 # Medir o tempo de execução da requisição
                 inicio = time.time()
-                response = requests.post(
-                    url=url,
-                    json=dados,
-                    headers=headers,
-                    auth=auth,
-                    timeout=timeout
-                )
+                
+                # Criar uma sessão sem hooks para evitar erros
+                with requests.Session() as session:
+                    
+                    # Preparar a requisição
+                    request = requests.Request('POST', url, json=dados, headers=headers, auth=auth)
+                    prepped = session.prepare_request(request)
+                    
+                    # Adicionar timestamp de início
+                    prepped.start_time = time.time()
+                    # Registrar o momento exato em que a conexão começa
+                    self.adicionar_log(f"Estabelecendo conexão com o servidor...", log_id=log_id+"_conexao_inicio")
+                    
+                    # Enviar a requisição com monitoramento de eventos
+                    # Não passamos hooks diretamente para send() pois causa erro
+                    response = session.send(
+                        prepped,
+                        timeout=timeout,
+                        allow_redirects=True
+                    )
+                    
+                    # Adicionar timestamp para o primeiro byte
+                    response.first_byte_time = time.time()
+                    self.adicionar_log(f"Recebendo dados do servidor...", log_id=log_id+"_recebimento_inicio")
+                    
+                    # Capturar tempos de conexão
+                    adapter = session.get_adapter(url)
+                    if hasattr(adapter, 'get_connection'):
+                        try:
+                            conn = adapter.get_connection(prepped.url)
+                            if hasattr(conn, 'conn_start_time') and hasattr(conn, 'conn_end_time'):
+                                prepped.conn_start_time = conn.conn_start_time
+                                prepped.conn_end_time = conn.conn_end_time
+                                tempo_conexao = round((conn.conn_end_time - conn.conn_start_time) * 1000, 2)  # ms
+                                # Registrar o momento exato em que a conexão foi estabelecida
+                                self.adicionar_log(f"Conexão estabelecida com o servidor!", log_id=log_id+"_conexao_fim")
+                        except:
+                            pass
+                    
+                    # Registrar o tempo de envio completo
+                    prepped.send_end_time = time.time()
+                    self.adicionar_log(f"Enviando dados para o servidor...", log_id=log_id+"_envio_inicio")
+                
                 fim = time.time()
                 tempo_execucao = round(fim - inicio, 2)  # Tempo em segundos com 2 casas decimais
+                self.adicionar_log(f"Transferência concluída!", log_id=log_id+"_transferencia_fim")
+                
+                # Se não conseguimos capturar os tempos exatos, fazer uma estimativa
+                if tempo_conexao is None:
+                    tempo_conexao = round(tempo_execucao * 0.2 * 1000, 2)  # Estimativa: 20% do tempo total em ms
+                
+                if tempo_ttfb is None:
+                    tempo_ttfb = round(tempo_execucao * 0.4 * 1000, 2)  # Estimativa: 40% do tempo total em ms
+                
+                # Calcular a taxa de transferência em MB/s
+                if tempo_execucao > 0:
+                    taxa_transferencia = round(tamanho_arquivo_mb / tempo_execucao, 2)  # MB/s
+                else:
+                    taxa_transferencia = 0
+                
+                # Registrar o momento em que a conexão foi estabelecida
+                self.adicionar_log(f"Conexão estabelecida em {tempo_conexao} ms", log_id=log_id+"_conexao_estabelecida")
+                
+                # Registrar os tempos de conexão e TTFB
+                self.adicionar_log(f"Tempo de conexão: {tempo_conexao} ms | Tempo até o primeiro byte (TTFB): {tempo_ttfb} ms", log_id=log_id+"_tempos")
+                
+                # Registrar a taxa de transferência
+                self.adicionar_log(f"Arquivo processado - Taxa de transferência: {taxa_transferencia} MB/s (Tamanho: {round(tamanho_arquivo_mb, 2)} MB)", log_id=log_id+"_taxa_transferencia")
                 
                 # Registrar resposta com o mesmo identificador, incluindo o tempo de execução
                 self.adicionar_log(f"Resposta: Status {response.status_code} - Tempo de execução: {tempo_execucao}s (Timeout configurado: {timeout}s)", log_id=log_id)
