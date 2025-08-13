@@ -1612,7 +1612,7 @@ class PostmanAutomatizado(ttk.Window):
                     # Adicionar timestamp de início
                     prepped.start_time = time.time()
                     # Registrar o momento exato em que a conexão começa
-                    self.adicionar_log(f"Estabelecendo conexão com o servidor...", log_id=log_id+"_conexao_inicio")
+                    self.adicionar_log(f"Estabelecendo conexão com o servidor... arquivo {arquivo_nome}", log_id=log_id+"_conexao_inicio")
                     
                     # Enviar a requisição com monitoramento de eventos
                     # Não passamos hooks diretamente para send() pois causa erro
@@ -1624,7 +1624,7 @@ class PostmanAutomatizado(ttk.Window):
                     
                     # Adicionar timestamp para o primeiro byte
                     response.first_byte_time = time.time()
-                    self.adicionar_log(f"Recebendo dados do servidor...", log_id=log_id+"_recebimento_inicio")
+                    self.adicionar_log(f"Recebendo dados do servidor... arquivo {arquivo_nome}", log_id=log_id+"_recebimento_inicio")
                     
                     # Capturar tempos de conexão
                     adapter = session.get_adapter(url)
@@ -1636,17 +1636,17 @@ class PostmanAutomatizado(ttk.Window):
                                 prepped.conn_end_time = conn.conn_end_time
                                 tempo_conexao = round((conn.conn_end_time - conn.conn_start_time) * 1000, 2)  # ms
                                 # Registrar o momento exato em que a conexão foi estabelecida
-                                self.adicionar_log(f"Conexão estabelecida com o servidor!", log_id=log_id+"_conexao_fim")
+                                self.adicionar_log(f"Conexão estabelecida com o servidor! arquivo {arquivo_nome}", log_id=log_id+"_conexao_fim")
                         except:
                             pass
                     
                     # Registrar o tempo de envio completo
                     prepped.send_end_time = time.time()
-                    self.adicionar_log(f"Enviando dados para o servidor...", log_id=log_id+"_envio_inicio")
+                    self.adicionar_log(f"Enviando dados para o servidor... arquivo {arquivo_nome}", log_id=log_id+"_envio_inicio")
                 
                 fim = time.time()
                 tempo_execucao = round(fim - inicio, 2)  # Tempo em segundos com 2 casas decimais
-                self.adicionar_log(f"Transferência concluída!", log_id=log_id+"_transferencia_fim")
+                self.adicionar_log(f"Transferência concluída! arquivo {arquivo_nome}", log_id=log_id+"_transferencia_fim")
                 
                 # Se não conseguimos capturar os tempos exatos, fazer uma estimativa
                 if tempo_conexao is None:
@@ -1662,16 +1662,16 @@ class PostmanAutomatizado(ttk.Window):
                     taxa_transferencia = 0
                 
                 # Registrar o momento em que a conexão foi estabelecida
-                self.adicionar_log(f"Conexão estabelecida em {tempo_conexao} ms", log_id=log_id+"_conexao_estabelecida")
+                self.adicionar_log(f"Conexão estabelecida em {tempo_conexao} ms arquivo {arquivo_nome}", log_id=log_id+"_conexao_estabelecida")
                 
                 # Registrar os tempos de conexão e TTFB
-                self.adicionar_log(f"Tempo de conexão: {tempo_conexao} ms | Tempo até o primeiro byte (TTFB): {tempo_ttfb} ms", log_id=log_id+"_tempos")
+                self.adicionar_log(f"Tempo de conexão: {tempo_conexao} ms | Tempo até o primeiro byte (TTFB): {tempo_ttfb} ms arquivo {arquivo_nome}", log_id=log_id+"_tempos")
                 
                 # Registrar a taxa de transferência
-                self.adicionar_log(f"Arquivo processado - Taxa de transferência: {taxa_transferencia} MB/s (Tamanho: {round(tamanho_arquivo_mb, 2)} MB)", log_id=log_id+"_taxa_transferencia")
+                self.adicionar_log(f"Arquivo processado - Taxa de transferência: {taxa_transferencia} MB/s (Tamanho: {round(tamanho_arquivo_mb, 2)} MB) arquivo {arquivo_nome}", log_id=log_id+"_taxa_transferencia")
                 
                 # Registrar resposta com o mesmo identificador, incluindo o tempo de execução
-                self.adicionar_log(f"Resposta: Status {response.status_code} - Tempo de execução: {tempo_execucao}s (Timeout configurado: {timeout}s)", log_id=log_id)
+                self.adicionar_log(f"Resposta: Status {response.status_code} - Tempo de execução: {tempo_execucao}s (Timeout configurado: {timeout}s) arquivo {arquivo_nome}", log_id=log_id)
                 
                 # Se a resposta for bem-sucedida (2xx), retornar o status
                 if 200 <= response.status_code < 300:
